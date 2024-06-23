@@ -1,0 +1,84 @@
+import numpy as np
+from google.colab import drive
+import shutil
+import os
+import tensorflow as tf
+from tensorflow.keras.preprocessing.text import Tokenizer
+from tensorflow.keras.preprocessing.sequence import pad_sequences
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Embedding, LSTM, Dense
+from sklearn.neighbors import NearestNeighbors
+from tqdm import tqdm
+
+drive.mount('/content/drive')
+file_path = '/content/drive/My Drive/AI/functions.txt'
+
+if os.path.exists(file_path):
+    # Read the file
+    with open(file_path, 'r') as file:
+        functions = file.readlines()
+        functions = [func.strip() for func in functions]  # Delete line symbols
+
+    # Print the accecable funcs
+    print("The funcs we read: ")
+    for func in functions:
+        print(func)
+else:
+    print(f"The file {file_path} doesnt exist.")
+
+# Use the token the make the funcs a list of numbers
+tokenizer = Tokenizer()
+tokenizer.fit_on_texts(functions)
+sequences = tokenizer.texts_to_sequences(functions)
+max_len = max(len(seq) for seq in sequences)
+X = pad_sequences(sequences, maxlen=max_len)
+
+# Build a model to create a presentations of the funcs
+vocab_size = len(tokenizer.word_index) + 1
+embedding_dim = 50
+
+model = Sequential([
+    Embedding(input_dim=vocab_size, output_dim=embedding_dim, input_length=max_len),
+    LSTM(100),
+    Dense(embedding_dim, activation='relu')
+])
+
+model.compile(optimizer='adam', loss='sparse_categorical_crossentropy', metrics=['accuracy'])
+
+# Make a tag labels
+labels = range(len(functions))
+y = np.array(labels)
+
+# Train the models
+model.fit(X, y, epochs=100)
+
+# Make presentations
+function_embeddings = model.predict(X)
+
+# Make index of nearest neigbors
+index = NearestNeighbors(n_neighbors=1, metric='cosine')
+index.fit(function_embeddings)
+
+# Func to find the similar funcs
+def find_similar_function(input_function):
+    input_sequence = tokenizer.texts_to_sequences([input_function])
+    input_padded = pad_sequences(input_sequence, maxlen=max_len)
+    input_embedding = model.predict(input_padded)
+    distances, indices = index.kneighbors(input_embedding)
+    closest_index = indices[0][0]
+    return functions[closest_index]
+
+# User input
+user_input = input("Insert a func to search: ")
+
+# Find the similar known func
+similar_function = find_similar_function(user_input)
+print("The similar func is: ", similar_function)
+
+# Add the func functions.txt to your drive
+#if os.path.exists(file_path):
+#    with open(file_path, 'a') as file:
+#        file.write(user_input + '\n')
+#        print(f"The func {user_input} added to {file_path}")
+#else:
+#    print(f"The file{file_path} doesnt exist")
